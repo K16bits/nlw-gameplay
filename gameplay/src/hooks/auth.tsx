@@ -3,6 +3,7 @@ import React, {
     useContext,
     useState,
     ReactNode,
+    useEffect
 } from 'react';
 
 import * as AuthSession from 'expo-auth-session';
@@ -12,7 +13,9 @@ const { CDN_IMAGE } = process.env;
 const { REDIRECT_URI } = process.env;
 const { RESPONSE_TYPE } = process.env;
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
+import { COLLECTION_USER } from '../configs/database'
 
 type User = {
     id: string;
@@ -28,6 +31,7 @@ type AuthContextData = {
     user: User;
     loading: boolean;
     singIn: () => Promise<void>;
+    singOut: () => Promise<void>;
 }
 
 type AuthProviderProps = {
@@ -61,11 +65,14 @@ function AuthProvide({ children }: AuthProviderProps) {
                 const firstName = userInfo.data.username.split(' ')[0];
                 userInfo.data.avatar = `${CDN_IMAGE}/avatars/${userInfo.data.id}/${userInfo.data.avatar}.png`
 
-                setUser({
+                const userData = {
                     ...userInfo.data,
                     firstName,
                     token: params.access_token
-                });
+                }
+
+                await AsyncStorage.setItem(COLLECTION_USER, JSON.stringify(userData))
+                setUser(userData);
             }
         } catch {
             throw new Error('Não foi possivel autenticar')
@@ -74,10 +81,29 @@ function AuthProvide({ children }: AuthProviderProps) {
         }
     }
 
+    async function singOut(){
+        setUser({} as User);
+        AsyncStorage.removeItem(COLLECTION_USER)
+    }
+
+    async function loadUserStorageData() {
+        const storage = await AsyncStorage.getItem(COLLECTION_USER);
+
+        if (storage) {
+            const userLogged = JSON.parse(storage) as User;
+            api.defaults.headers.authorization = `Bearer ${userLogged.token}`;
+            setUser(userLogged);
+        }
+    }
+    useEffect(() => {
+        loadUserStorageData();
+    }, []);
+
     return (
         <AuthContext.Provider value={{
             user,
             loading,
+            singOut,
             singIn
         }}>
             {children}
@@ -92,6 +118,6 @@ function useAuth() {
 
 export {
     AuthProvide,
-    useAuth
+    useAuth,
 }
 
